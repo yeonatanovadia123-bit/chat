@@ -3,128 +3,324 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat</title>
+    <title>Secure Mailbox</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/appwrite@13.0.0"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jsencrypt/3.3.2/jsencrypt.min.js"></script>
+    
     <style>
-        body { background-color: #f0f2f5; font-family: sans-serif; padding: 20px; }
-        .container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-        .msg { background: #d1e7dd; padding: 10px; margin: 5px 0; border-radius: 5px; }
+        body { background-color: #e9ecef; font-family: 'Segoe UI', sans-serif; }
+        .main-card { max-width: 900px; margin: 30px auto; background: white; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); min-height: 80vh; display: flex; flex-direction: column; }
+        .sidebar { background: #f8f9fa; border-left: 1px solid #dee2e6; padding: 20px; width: 250px; }
+        .content-area { flex: 1; padding: 20px; }
+        .mail-row { cursor: pointer; transition: 0.2s; }
+        .mail-row:hover { background-color: #f1f3f5; }
+        .unread { font-weight: bold; background-color: #e8f0fe; }
+        .secure-badge { font-size: 0.8em; background: #d1e7dd; color: #0f5132; padding: 2px 6px; border-radius: 4px; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h2 class="text-center">צ'אט מאובטח</h2>
-    
-    <div id="login-screen">
-        <input type="text" id="username" class="form-control mb-2" placeholder="שם משתמש (באנגלית)">
-        <button onclick="register()" class="btn btn-primary w-100">כנס</button>
-        <p id="status" class="text-muted mt-2"></p>
+<div class="container-fluid">
+    <div id="login-screen" class="container mt-5" style="max-width: 400px;">
+        <div class="card p-4">
+            <h3 class="text-center mb-4">כניסה למייל המאובטח</h3>
+            <div class="alert alert-info small">המערכת תשתמש במפתח הצפנה פרטי שנשמר בדפדפן שלך בלבד.</div>
+            <input type="text" id="username" class="form-control mb-3" placeholder="שם משתמש (באנגלית)">
+            <button onclick="login()" class="btn btn-primary w-100">צור זהות / כנס</button>
+            <div id="login-status" class="text-center mt-2 text-muted"></div>
+        </div>
     </div>
 
-    <div id="chat-screen" style="display:none;">
-        <h3>שלום <span id="my-name"></span></h3>
-        <div id="messages" style="height: 300px; overflow-y: scroll; border: 1px solid #ddd; margin-bottom: 10px; padding: 10px;"></div>
-        <input type="text" id="to-user" class="form-control mb-1" placeholder="למי לשלוח?">
-        <input type="text" id="msg-text" class="form-control mb-1" placeholder="הודעה...">
-        <button onclick="send()" class="btn btn-success w-100">שלח</button>
+    <div id="mail-app" class="main-card" style="display:none;">
+        <div class="d-flex justify-content-between align-items-center p-3 border-bottom">
+            <h4 class="m-0">SecureMail <span class="secure-badge">E2EE</span></h4>
+            <div>
+                <span id="current-user" class="me-3 fw-bold"></span>
+                <button onclick="logout()" class="btn btn-sm btn-outline-danger">התנתק</button>
+            </div>
+        </div>
+
+        <div class="d-flex flex-grow-1">
+            <div class="sidebar d-none d-md-block">
+                <button onclick="showCompose()" class="btn btn-primary w-100 mb-4">✏️ מייל חדש</button>
+                <div class="list-group">
+                    <a href="#" onclick="loadInbox()" class="list-group-item list-group-item-action active">📥 דואר נכנס</a>
+                    <a href="#" class="list-group-item list-group-item-action disabled">📤 דואר יוצא (בקרוב)</a>
+                </div>
+            </div>
+
+            <div class="content-area">
+                
+                <div id="inbox-view">
+                    <h5 class="mb-3">דואר נכנס</h5>
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th style="width: 20%">שולח</th>
+                                    <th style="width: 50%">נושא</th>
+                                    <th style="width: 30%">תאריך</th>
+                                </tr>
+                            </thead>
+                            <tbody id="email-list">
+                                </tbody>
+                        </table>
+                    </div>
+                    <p id="empty-msg" class="text-center text-muted mt-5" style="display:none;">אין מיילים חדשים</p>
+                </div>
+
+                <div id="read-view" style="display:none;">
+                    <button onclick="loadInbox()" class="btn btn-sm btn-secondary mb-3">🔙 חזור לרשימה</button>
+                    <div class="card">
+                        <div class="card-header bg-white">
+                            <h4 id="read-subject"></h4>
+                            <div class="text-muted small">
+                                מאת: <strong id="read-sender"></strong> | <span id="read-date"></span>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <p id="read-content" style="white-space: pre-wrap;"></p>
+                            <hr>
+                            <small class="text-muted">🔒 תוכן זה הוצפן מקצה לקצה ופוענח כעת בדפדפן שלך.</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="compose-view" style="display:none;">
+                    <h5 class="mb-3">כתיבת הודעה מאובטחת</h5>
+                    <form onsubmit="event.preventDefault(); sendEmail();">
+                        <div class="mb-3">
+                            <label>אל (שם משתמש):</label>
+                            <input type="text" id="compose-to" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label>נושא:</label>
+                            <input type="text" id="compose-subject" class="form-control" required>
+                            <small class="text-muted">* הנושא נשלח כטקסט גלוי כדי להציג ברשימה</small>
+                        </div>
+                        <div class="mb-3">
+                            <label>תוכן ההודעה (יוצפן):</label>
+                            <textarea id="compose-body" class="form-control" rows="10" required></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-success">שלח מוצפן 🔒</button>
+                        <button type="button" onclick="loadInbox()" class="btn btn-link text-secondary">ביטול</button>
+                    </form>
+                </div>
+
+            </div>
+        </div>
     </div>
 </div>
 
 <script>
-    // הגדרות החיבור שלך
-    const client = new Appwrite.Client()
-        .setEndpoint('https://cloud.appwrite.io/v1')
-        .setProject('694abef500045ee01528'); // הפרויקט שלך
+    // ==========================================
+    // הגדרות - אל תיגע אם זה כבר נכון
+    // ==========================================
+    const PROJECT_ID = '694abef500045ee01528';       
+    const DATABASE_ID = '694abf9300062560c636';     
+    const USERS_COL = 'users'; 
+    const MSGS_COL = 'msgs'; 
 
-    const db = new Appwrite.Databases(client);
-    
-    const DB_ID = '694abf9300062560c636'; // הדאטה בייס שלך
-    const USERS = 'users'; 
-    const MSGS = 'msgs';
+    // אתחול Appwrite
+    const { Client, Databases, ID, Query } = Appwrite;
+    const client = new Client().setEndpoint('https://cloud.appwrite.io/v1').setProject(PROJECT_ID);
+    const databases = new Databases(client);
 
-    let me = localStorage.getItem('u');
-    let key = localStorage.getItem('k');
+    // ניהול משתמש
+    let myUsername = localStorage.getItem('mail_user');
+    let myPrivKey = localStorage.getItem('mail_priv');
 
-    if(me && key) showChat(me);
+    // בדיקת התחברות אוטומטית
+    if (myUsername && myPrivKey) {
+        openMailbox(myUsername);
+    }
 
-    async function register() {
-        const name = document.getElementById('username').value;
-        document.getElementById('status').innerText = "יוצר מפתחות...";
+    // --- לוגין / הרשמה ---
+    async function login() {
+        const username = document.getElementById('username').value.trim();
+        if (!username) return alert("אנא הכנס שם משתמש");
         
-        // יצירת מפתח
-        const crypt = new JSEncrypt({default_key_size: 2048});
+        document.getElementById('login-status').innerText = "מייצר מפתחות הצפנה...";
+
+        // 1. נסה ליצור משתמש חדש
+        const crypt = new JSEncrypt({ default_key_size: 2048 });
+        
         setTimeout(async () => {
-            const pub = crypt.getPublicKey();
-            const priv = crypt.getPrivateKey();
+            const privateKey = crypt.getPrivateKey();
+            const publicKey = crypt.getPublicKey();
 
             try {
-                // שמירה בשרת
-                await db.createDocument(DB_ID, USERS, Appwrite.ID.unique(), {
-                    username: name,
-                    public_key: pub
-                });
+                // בדיקה אם קיים
+                const check = await databases.listDocuments(DATABASE_ID, USERS_COL, [Query.equal('username', username)]);
                 
-                localStorage.setItem('u', name);
-                localStorage.setItem('k', priv);
-                showChat(name);
-            } catch(e) {
-                alert("שגיאה או ששם המשתמש תפוס");
+                if (check.total === 0) {
+                    // יוצר משתמש חדש
+                    await databases.createDocument(DATABASE_ID, USERS_COL, ID.unique(), {
+                        username: username,
+                        public_key: publicKey
+                    });
+                    // שומר מפתח פרטי חדש
+                    localStorage.setItem('mail_user', username);
+                    localStorage.setItem('mail_priv', privateKey);
+                    openMailbox(username);
+                } else {
+                    // משתמש קיים - מנסה להתחבר
+                    // הערה: במערכת אמיתית צריך סיסמה. כאן אנחנו בודקים אם יש מפתח שמור במחשב
+                    if (localStorage.getItem('mail_user') === username) {
+                        openMailbox(username);
+                    } else {
+                        alert("שם המשתמש תפוס, והמפתח הפרטי לא נמצא במחשב הזה.");
+                    }
+                }
+            } catch (err) {
+                console.error(err);
+                alert("שגיאת התחברות: " + err.message);
             }
-        }, 500);
+            document.getElementById('login-status').innerText = "";
+        }, 100);
     }
 
-    function showChat(name) {
-        me = name;
-        key = localStorage.getItem('k');
+    function openMailbox(user) {
+        myUsername = user;
+        myPrivKey = localStorage.getItem('mail_priv');
         document.getElementById('login-screen').style.display = 'none';
-        document.getElementById('chat-screen').style.display = 'block';
-        document.getElementById('my-name').innerText = name;
-        setInterval(loadMsgs, 3000);
+        document.getElementById('mail-app').style.display = 'flex';
+        document.getElementById('current-user').innerText = user;
+        loadInbox();
     }
 
-    async function send() {
-        const to = document.getElementById('to-user').value;
-        const txt = document.getElementById('msg-text').value;
-
-        // 1. מביאים את המפתח של החבר
-        const u = await db.listDocuments(DB_ID, USERS, [Appwrite.Query.equal('username', to)]);
-        if(u.total === 0) return alert("משתמש לא נמצא");
-
-        // 2. מצפינים
-        const encryptor = new JSEncrypt();
-        encryptor.setPublicKey(u.documents[0].public_key);
-        const encrypted = encryptor.encrypt(txt);
-
-        // 3. שולחים
-        await db.createDocument(DB_ID, MSGS, Appwrite.ID.unique(), {
-            sender_name: me,
-            recipient_id: to,
-            content: encrypted,
-            timestamp: new Date().toISOString()
-        });
-        alert("נשלח!");
+    // --- ניווט ---
+    function showView(viewId) {
+        ['inbox-view', 'read-view', 'compose-view'].forEach(id => document.getElementById(id).style.display = 'none');
+        document.getElementById(viewId).style.display = 'block';
     }
 
-    async function loadMsgs() {
-        const res = await db.listDocuments(DB_ID, MSGS, [
-            Appwrite.Query.equal('recipient_id', me),
-            Appwrite.Query.orderDesc('timestamp')
-        ]);
+    function showCompose() {
+        showView('compose-view');
+        document.getElementById('compose-to').value = '';
+        document.getElementById('compose-subject').value = '';
+        document.getElementById('compose-body').value = '';
+    }
 
-        const box = document.getElementById('messages');
-        box.innerHTML = '';
-        const decryptor = new JSEncrypt();
-        decryptor.setPrivateKey(key);
+    // --- טעינת דואר נכנס ---
+    async function loadInbox() {
+        showView('inbox-view');
+        const list = document.getElementById('email-list');
+        list.innerHTML = '<tr><td colspan="3" class="text-center">טוען...</td></tr>';
 
-        res.documents.forEach(m => {
-            let txt = decryptor.decrypt(m.content);
-            if(!txt) txt = "הודעה לא קריאה";
-            box.innerHTML += `<div class='msg'><b>${m.sender_name}:</b> ${txt}</div>`;
-        });
+        try {
+            const response = await databases.listDocuments(DATABASE_ID, MSGS_COL, [
+                Query.equal('recipient_id', myUsername),
+                Query.orderDesc('timestamp'),
+                Query.limit(50)
+            ]);
+
+            list.innerHTML = '';
+            if (response.total === 0) {
+                document.getElementById('empty-msg').style.display = 'block';
+                return;
+            }
+            document.getElementById('empty-msg').style.display = 'none';
+
+            response.documents.forEach(email => {
+                const date = new Date(email.timestamp).toLocaleDateString('he-IL') + ' ' + new Date(email.timestamp).toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'});
+                
+                // הוספת שורה לטבלה
+                const row = `
+                    <tr class="mail-row" onclick="readEmail('${email.$id}', '${email.sender_name}', '${email.subject}', '${date}')">
+                        <td class="fw-bold">${email.sender_name}</td>
+                        <td>${email.subject || '(ללא נושא)'}</td>
+                        <td class="text-muted small">${date}</td>
+                    </tr>
+                `;
+                list.innerHTML += row;
+            });
+            
+            // שומרים את ההודעות בזיכרון זמני כדי שנוכל לפתוח אותן
+            window.currentEmails = response.documents;
+
+        } catch (error) {
+            console.error(error);
+            list.innerHTML = '<tr><td colspan="3" class="text-danger text-center">שגיאה בטעינת דואר (בדוק Console)</td></tr>';
+        }
+    }
+
+    // --- קריאת מייל (פענוח) ---
+    function readEmail(id, sender, subject, date) {
+        // מוצא את המייל מהזיכרון
+        const email = window.currentEmails.find(e => e.$id === id);
+        if (!email) return;
+
+        showView('read-view');
+        document.getElementById('read-subject').innerText = subject;
+        document.getElementById('read-sender').innerText = sender;
+        document.getElementById('read-date').innerText = date;
+        document.getElementById('read-content').innerText = "מפענח הצפנה...";
+
+        // פענוח
+        setTimeout(() => {
+            const decryptor = new JSEncrypt();
+            decryptor.setPrivateKey(myPrivKey);
+            const decrypted = decryptor.decrypt(email.content);
+            
+            if (decrypted) {
+                document.getElementById('read-content').innerText = decrypted;
+            } else {
+                document.getElementById('read-content').innerHTML = "<span class='text-danger'>⛔ כשל בפענוח ההודעה. ייתכן שהמפתח הפרטי שלך אינו תואם.</span>";
+            }
+        }, 100);
+    }
+
+    // --- שליחת מייל ---
+    async function sendEmail() {
+        const toUser = document.getElementById('compose-to').value.trim();
+        const subject = document.getElementById('compose-subject').value;
+        const body = document.getElementById('compose-body').value;
+
+        if(!toUser || !body) return alert("חסרים פרטים");
+
+        // 1. מציאת המפתח הציבורי של הנמען
+        try {
+            const userSearch = await databases.listDocuments(DATABASE_ID, USERS_COL, [Query.equal('username', toUser)]);
+            
+            if (userSearch.total === 0) {
+                return alert("המשתמש " + toUser + " לא נמצא במערכת");
+            }
+
+            const receiverKey = userSearch.documents[0].public_key;
+
+            // 2. הצפנה
+            const encryptor = new JSEncrypt();
+            encryptor.setPublicKey(receiverKey);
+            const encryptedBody = encryptor.encrypt(body);
+
+            if (!encryptedBody) return alert("ההודעה ארוכה מדי להצפנה זו (נסה לקצר)");
+
+            // 3. שליחה
+            await databases.createDocument(DATABASE_ID, MSGS_COL, ID.unique(), {
+                sender_name: myUsername,
+                recipient_id: toUser,
+                subject: subject,
+                content: encryptedBody,
+                timestamp: new Date().toISOString()
+            });
+
+            alert("המייל נשלח בהצלחה!");
+            loadInbox();
+
+        } catch (error) {
+            console.error(error);
+            alert("שגיאה בשליחה: " + error.message);
+        }
+    }
+
+    function logout() {
+        localStorage.removeItem('mail_user');
+        localStorage.removeItem('mail_priv');
+        location.reload();
     }
 </script>
+
 </body>
 </html>
