@@ -1,290 +1,216 @@
 <!DOCTYPE html>
-<html dir="rtl" lang="he">
+<html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🔒 צ'אט + מייל מלא - עובד!</title>
+    <title>E2EE Chat - הצפנה מלאה</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/appwrite@13.0.0"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsencrypt/3.3.2/jsencrypt.min.js"></script>
+    
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; direction: rtl; padding: 20px; }
-        .container { max-width: 1000px; margin: 0 auto; background: rgba(255,255,255,0.95); border-radius: 20px; padding: 30px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); }
-        .header { background: linear-gradient(135deg, #ff6b6b, #ff8e8e); color: white; padding: 25px; border-radius: 15px; text-align: center; margin-bottom: 30px; }
-        .tabs { display: flex; gap: 10px; justify-content: center; margin-bottom: 30px; flex-wrap: wrap; }
-        .tab { padding: 12px 24px; border: none; border-radius: 25px; cursor: pointer; font-weight: bold; transition: all 0.3s; background: #f8f9fa; }
-        .tab.active { background: #667eea; color: white; }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-        
-        .section { background: white; padding: 25px; border-radius: 15px; margin-bottom: 25px; box-shadow: 0 5px 15px rgba(0,0,0,0.08); }
-        input, textarea, select { width: 100%; padding: 15px; border: 2px solid #e9ecef; border-radius: 12px; margin: 10px 0; font-size: 16px; }
-        button { background: linear-gradient(135deg, #667eea, #764ba2); color: white; border: none; padding: 15px 25px; border-radius: 12px; cursor: pointer; font-size: 16px; margin: 5px; transition: all 0.3s; }
-        button:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(102,126,234,0.4); }
-        button:disabled { opacity: 0.5; cursor: not-allowed; }
-        
-        #chat-messages, .email-list { height: 400px; overflow-y: auto; padding: 20px; border: 2px solid #e9ecef; border-radius: 15px; background: #f8f9fa; margin-bottom: 20px; }
-        .message, .email-item { padding: 15px; border-radius: 15px; margin: 10px 0; cursor: pointer; }
-        .message.sent { background: linear-gradient(135deg, #667eea, #764ba2); color: white; margin-left: auto; }
-        .message.received { background: linear-gradient(135deg, #4ecdc4, #44a08d); color: white; }
-        .quote { background: rgba(255,255,255,0.2); padding: 10px; border-left: 4px solid white; margin: 10px 0; border-radius: 8px; font-style: italic; }
-        .contacts-list { max-height: 200px; overflow-y: auto; }
-        .contact-item { padding: 15px; border-bottom: 1px solid #eee; cursor: pointer; display: flex; justify-content: space-between; }
-        .contact-item:hover { background: #f0f8ff; }
-        .status { padding: 15px; border-radius: 10px; margin: 15px 0; text-align: center; font-weight: bold; }
-        .status.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .status.error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        body { background-color: #f0f2f5; font-family: sans-serif; }
+        .app-container { max-width: 800px; margin: 30px auto; background: #fff; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); padding: 20px; min-height: 80vh; }
+        .chat-box { height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 15px; margin-bottom: 15px; background: #fafafa; border-radius: 5px; }
+        .msg { padding: 8px 12px; margin-bottom: 10px; border-radius: 8px; max-width: 80%; display: block; word-wrap: break-word; }
+        .msg-in { background-color: #d1e7dd; margin-right: auto; }
+        .debug-text { font-size: 0.7em; color: #888; display: block; margin-top: 4px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🔒 צ'אט + תיבת מייל מלאה</h1>
-            <div>עוגיות • ציטוט • BroadcastChannel • עובד בין חלונות!</div>
+
+<div class="container">
+    <div class="app-container">
+        <h2 class="text-center mb-4">מערכת צ'אט מוצפנת (E2EE)</h2>
+
+        <div id="login-section">
+            <div class="alert alert-primary">
+                המערכת מייצרת מפתח פרטי בדפדפן שלך. השרת לא יכול לקרוא את ההודעות.
+            </div>
+            <input type="text" id="username" class="form-control mb-2" placeholder="בחר שם משתמש באנגלית (למשל: dan)">
+            <button onclick="registerUser()" class="btn btn-primary w-100">צור מפתחות וכנס</button>
+            <p id="loading" class="text-center mt-2 text-muted" style="display:none;">מייצר מפתחות הצפנה...</p>
         </div>
 
-        <div class="tabs">
-            <button class="tab active" onclick="switchTab('chat')">💬 צ'אט</button>
-            <button class="tab" onclick="switchTab('email')">📧 מייל</button>
-            <button class="tab" onclick="switchTab('contacts')">👥 אנשי קשר</button>
-        </div>
+        <div id="chat-section" style="display:none;">
+            <div class="d-flex justify-content-between mb-2">
+                <strong id="welcome-user"></strong>
+                <button onclick="logout()" class="btn btn-sm btn-outline-danger">התנתק</button>
+            </div>
 
-        <!-- צ'אט -->
-        <div id="chat-tab" class="tab-content active">
-            <div class="section">
-                <h3>📱 חדר צ'אט</h3>
-                <input id="roomId" value="room-123" placeholder="Room ID (שיתוף עם חבר)">
-                <button onclick="joinChatRoom()">הצטרף לחדר</button>
-                <div id="chat-status" class="status" style="display:none;"></div>
-            </div>
-            <div id="chat-container" style="display:none;">
-                <div id="chat-messages"></div>
-                <div style="display:flex; gap:15px;">
-                    <input id="chat-message" placeholder="> לציטוט | Enter לשליחה" onkeypress="if(event.key==='Enter') sendChatMessage()">
-                    <button onclick="sendChatMessage()" disabled>שלח</button>
-                </div>
-            </div>
-        </div>
+            <div id="messages-area" class="chat-box"></div>
 
-        <!-- תיבת מייל -->
-        <div id="email-tab" class="tab-content">
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
-                <div class="section">
-                    <h3>📥 Incoming</h3>
-                    <div id="inbox-list" class="email-list"></div>
-                </div>
-                <div class="section">
-                    <h3>📤 נשלח</h3>
-                    <div id="sent-list" class="email-list"></div>
-                </div>
+            <div class="input-group">
+                <input type="text" id="recipient" class="form-control" placeholder="למי לשלוח?" style="max-width: 30%;">
+                <input type="text" id="msg-content" class="form-control" placeholder="תוכן ההודעה...">
+                <button onclick="sendMessage()" class="btn btn-success">שלח 🔒</button>
             </div>
-            <div class="section">
-                <input id="email-room" placeholder="Room ID הנמען">
-                <input id="email-subject" placeholder="נושא">
-                <textarea id="email-body" placeholder="תוכן..." rows="4"></textarea>
-                <button onclick="sendEmail()">📤 שלח מייל</button>
-            </div>
-        </div>
-
-        <!-- אנשי קשר -->
-        <div id="contacts-tab" class="tab-content">
-            <div class="section">
-                <h3>💾 שמור איש קשר (עוגיות)</h3>
-                <input id="contact-name" placeholder="שם (דוד)">
-                <input id="contact-room" placeholder="Room ID">
-                <button onclick="saveContact()">שמור</button>
-                <div id="contacts-list" class="contacts-list"></div>
-            </div>
+            <small class="text-muted mt-2">הערה: הודעות ששלחת לא יוצגו כאן (כי הן מוצפנות למקבל), רק הודעות שנשלחו אליך.</small>
         </div>
     </div>
+</div>
 
-    <script>
-        let currentChannel = null;
-        let chatConnected = false;
+<script>
+    // ==========================================
+    // הגדרות החיבור - מעודכן לפי התמונה ששלחת!
+    // ==========================================
+    const PROJECT_ID = '694abef500045ee01528';       
+    const DATABASE_ID = '694abf9300062560c636';     
+    
+    // מזהים לפי התמונה שלך:
+    const USERS_COL_ID = 'users'; 
+    const MSGS_COL_ID = 'msgs'; 
 
-        // טאבים
-        function switchTab(tabName) {
-            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
-            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-            document.getElementById(tabName + '-tab').classList.add('active');
-            event.target.classList.add('active');
+    // אתחול
+    const { Client, Databases, ID, Query } = Appwrite;
+    const client = new Client().setEndpoint('https://cloud.appwrite.io/v1').setProject(PROJECT_ID);
+    const databases = new Databases(client);
+
+    // משתנים למפתחות
+    let myUser = localStorage.getItem('chat_user');
+    let myPrivKey = localStorage.getItem('chat_priv');
+
+    // כניסה אוטומטית אם המפתחות קיימים
+    if(myUser && myPrivKey) {
+        showChat(myUser);
+    }
+
+    // --- 1. הרשמה ויצירת מפתחות ---
+    async function registerUser() {
+        const username = document.getElementById('username').value.trim();
+        if(!username) return alert("חובה להכניס שם");
+
+        document.getElementById('loading').style.display = 'block';
+
+        try {
+            // בדיקה אם המשתמש כבר קיים בשרת
+            // הערה: אם זה המשתמש הראשון אי פעם, ייתכן שתהיה שגיאת הרשאה אם לא הגדרת Permissions ל-Any
+            // ננסה פשוט ליצור, ואם נכשל בגלל ID כפול נדע שהוא קיים
+        } catch(e) {}
+
+        // יצירת מפתחות RSA
+        const crypt = new JSEncrypt({ default_key_size: 2048 });
+        
+        setTimeout(async () => {
+            const privateKey = crypt.getPrivateKey();
+            const publicKey = crypt.getPublicKey();
+
+            try {
+                // בדיקה ידנית אם המשתמש תפוס לפני יצירה
+                const check = await databases.listDocuments(DATABASE_ID, USERS_COL_ID, [Query.equal('username', username)]);
+                if(check.total > 0) {
+                     alert("שם המשתמש תפוס! נסה שם אחר.");
+                     document.getElementById('loading').style.display = 'none';
+                     return;
+                }
+
+                // שמירת המפתח הציבורי בשרת
+                await databases.createDocument(DATABASE_ID, USERS_COL_ID, ID.unique(), {
+                    username: username,
+                    public_key: publicKey
+                });
+
+                // שמירה מקומית
+                localStorage.setItem('chat_user', username);
+                localStorage.setItem('chat_priv', privateKey);
+                
+                showChat(username);
+            } catch (err) {
+                console.error(err);
+                alert("שגיאה: " + err.message + "\n(ודא שיצרת את השדות בטבלה והגדרת הרשאות Permissions ל-Any)");
+            }
+            document.getElementById('loading').style.display = 'none';
+        }, 200);
+    }
+
+    function showChat(name) {
+        myUser = name;
+        myPrivKey = localStorage.getItem('chat_priv');
+        document.getElementById('login-section').style.display = 'none';
+        document.getElementById('chat-section').style.display = 'block';
+        document.getElementById('welcome-user').innerText = "מחובר: " + name;
+        loadMessages();
+        setInterval(loadMessages, 3000); // רענון כל 3 שניות
+    }
+
+    // --- 2. שליחה ---
+    async function sendMessage() {
+        const recipient = document.getElementById('recipient').value.trim();
+        const text = document.getElementById('msg-content').value;
+        if(!recipient || !text) return alert("חסר נמען או תוכן");
+
+        try {
+            // מציאת המפתח הציבורי של הנמען
+            const res = await databases.listDocuments(DATABASE_ID, USERS_COL_ID, [Query.equal('username', recipient)]);
+            if(res.total === 0) return alert("המשתמש " + recipient + " לא נמצא");
+            
+            const receiverPublicKey = res.documents[0].public_key;
+
+            // הצפנה
+            const encryptor = new JSEncrypt();
+            encryptor.setPublicKey(receiverPublicKey);
+            const encryptedData = encryptor.encrypt(text);
+
+            if(!encryptedData) return alert("שגיאת הצפנה (אולי טקסט ארוך מדי?)");
+
+            // שליחה לשרת
+            await databases.createDocument(DATABASE_ID, MSGS_COL_ID, ID.unique(), {
+                sender_name: myUser,
+                recipient_id: recipient,
+                content: encryptedData,
+                timestamp: new Date().toISOString()
+            });
+
+            document.getElementById('msg-content').value = '';
+            alert("נשלח בהצלחה (מוצפן)");
+
+        } catch(err) {
+            console.error(err);
+            alert("שגיאה בשליחה: " + err.message);
         }
+    }
 
-        // עוגיות
-        function setCookie(name, value, days=365) {
-            const date = new Date(Date.now() + days*864e5).toUTCString();
-            document.cookie = `${name}=${encodeURIComponent(JSON.stringify(value))}; expires=${date}; path=/`;
-        }
-        function getCookie(name) {
-            return document.cookie.split(';').reduce((r,v) => {
-                const [k, val] = v.split('=');
-                return k.trim() === name ? JSON.parse(decodeURIComponent(val.trim())) : r;
-            }, null);
-        }
+    // --- 3. קבלה ופענוח ---
+    async function loadMessages() {
+        if(!myUser) return;
 
-        // אנשי קשר
-        function saveContact() {
-            const name = document.getElementById('contact-name').value.trim();
-            const room = document.getElementById('contact-room').value.trim();
-            if (!name || !room) return showStatus('❌ מלא שם ו-Room ID', 'error');
-            
-            const contacts = getCookie('contacts') || [];
-            contacts.unshift({name, room, time: Date.now()});
-            setCookie('contacts', contacts.slice(0,50));
-            
-            loadContacts();
-            showStatus(`✅ ${name} נשמר!`, 'success');
-        }
+        try {
+            // שליפת הודעות שמיועדות לי
+            const res = await databases.listDocuments(DATABASE_ID, MSGS_COL_ID, [
+                Query.equal('recipient_id', myUser),
+                Query.orderDesc('timestamp'),
+                Query.limit(20)
+            ]);
 
-        function loadContacts() {
-            const contacts = getCookie('contacts') || [];
-            document.getElementById('contacts-list').innerHTML = contacts.map(c => 
-                `<div class="contact-item" onclick="selectContact('${c.name}', '${c.room}')">
-                    👤 ${c.name} 
-                    <small>${c.room.slice(0,10)}...</small>
-                </div>`
-            ).join('');
-        }
+            const area = document.getElementById('messages-area');
+            area.innerHTML = '';
 
-        function selectContact(name, room) {
-            document.getElementById('roomId').value = room;
-            document.getElementById('chat-message').placeholder = `ל-${name}...`;
-            showStatus(`נבחר: ${name}`, 'success');
-        }
+            const decryptor = new JSEncrypt();
+            decryptor.setPrivateKey(myPrivKey);
 
-        // צ'אט
-        function joinChatRoom() {
-            const roomId = document.getElementById('roomId').value.trim() || 'room-123';
-            
-            if (currentChannel) currentChannel.close();
-            
-            currentChannel = new BroadcastChannel(roomId);
-            chatConnected = true;
-            
-            document.getElementById('chat-container').style.display = 'block';
-            document.querySelector('#chat-container button').disabled = false;
-            document.getElementById('chat-status').innerHTML = `✅ מחובר ל-${roomId}`;
-            document.getElementById('chat-status').className = 'status success';
-            document.getElementById('chat-status').style.display = 'block';
-            
-            // קבל הודעות
-            currentChannel.onmessage = (e) => {
-                const data = JSON.parse(e.data);
-                addChatMessage(data.sender, data.text, data.quote, data.time);
-            };
-            
-            // טען היסטוריה
-            const history = JSON.parse(localStorage.getItem(`chat_${roomId}`) || '[]');
-            history.forEach(msg => addChatMessage(msg.sender, msg.text, msg.quote, msg.time));
-        }
+            res.documents.forEach(msg => {
+                let originalText = decryptor.decrypt(msg.content);
+                if(!originalText) originalText = "⛔ שגיאה בפענוח (מפתח פרטי לא תואם)";
 
-        function sendChatMessage() {
-            const text = document.getElementById('chat-message').value.trim();
-            if (!text || !chatConnected) return;
-            
-            const quoteMatch = text.match(/^>\s*(.+)/);
-            const quote = quoteMatch ? quoteMatch[1] : null;
-            const cleanText = quote ? text.replace(/^>\s*/, '') : text;
-            
-            const message = {
-                sender: 'אתה',
-                text: cleanText,
-                quote,
-                time: new Date().toLocaleTimeString('he-IL')
-            };
-            
-            currentChannel.postMessage(JSON.stringify(message));
-            document.getElementById('chat-message').value = '';
-            
-            // שמור היסטוריה
-            const history = JSON.parse(localStorage.getItem(`chat_${document.getElementById('roomId').value}`) || '[]');
-            history.push(message);
-            localStorage.setItem(`chat_${document.getElementById('roomId').value}`, JSON.stringify(history.slice(-100)));
-        }
+                area.innerHTML += `
+                    <div class="msg msg-in">
+                        <strong>מאת ${msg.sender_name}:</strong><br>
+                        ${originalText}
+                        <span class="debug-text">הוצפן כ: ${msg.content.substring(0, 10)}...</span>
+                    </div>
+                `;
+            });
 
-        function addChatMessage(sender, text, quote, time) {
-            const container = document.getElementById('chat-messages');
-            const div = document.createElement('div');
-            div.className = `message ${sender === 'אתה' ? 'sent' : 'received'}`;
-            
-            let html = `<strong>${sender}:</strong> ${escapeHtml(text)}<br><small>${time}</small>`;
-            if (quote) html = `<div class="quote">${escapeHtml(quote)}</div>` + html;
-            
-            div.innerHTML = html;
-            container.appendChild(div);
-            container.scrollTop = container.scrollHeight;
+        } catch(err) {
+            console.error("Error loading", err);
         }
+    }
 
-        // מייל
-        function sendEmail() {
-            const roomId = document.getElementById('email-room').value.trim();
-            const subject = document.getElementById('email-subject').value.trim();
-            const body = document.getElementById('email-body').value.trim();
-            
-            if (!roomId || !body) return showStatus('❌ מלא Room ID ותוכן', 'error');
-            
-            const email = {
-                id: Date.now(),
-                from: document.getElementById('roomId').value || 'room-123',
-                to: roomId,
-                subject,
-                body,
-                time: new Date().toLocaleTimeString('he-IL')
-            };
-            
-            let inbox = JSON.parse(localStorage.getItem('inbox') || '[]');
-            let sent = JSON.parse(localStorage.getItem('sent') || '[]');
-            
-            inbox.unshift(email);
-            sent.unshift(email);
-            
-            localStorage.setItem('inbox', JSON.stringify(inbox.slice(0,100)));
-            localStorage.setItem('sent', JSON.stringify(sent.slice(0,100)));
-            
-            loadEmails();
-            showStatus('✅ מייל נשלח!', 'success');
-        }
+    function logout() {
+        localStorage.clear();
+        location.reload();
+    }
+</script>
 
-        function loadEmails() {
-            const inbox = JSON.parse(localStorage.getItem('inbox') || '[]');
-            const sent = JSON.parse(localStorage.getItem('sent') || '[]');
-            
-            document.getElementById('inbox-list').innerHTML = inbox.map(e => 
-                `<div class="email-item" onclick="showEmail('${e.id}')">
-                    📥 ${e.from.slice(0,12)}... - ${e.subject}
-                </div>`
-            ).join('');
-            
-            document.getElementById('sent-list').innerHTML = sent.map(e => 
-                `<div class="email-item" onclick="showEmail('${e.id}')">
-                    📤 ${e.to.slice(0,12)}... - ${e.subject}
-                </div>`
-            ).join('');
-        }
-
-        function showEmail(id) {
-            const emails = JSON.parse(localStorage.getItem('inbox') || '[]');
-            const email = emails.find(e => e.id == id);
-            alert(`${email.subject}\n\n${email.body}`);
-        }
-
-        function showStatus(msg, type) {
-            const status = document.createElement('div');
-            status.className = `status ${type}`;
-            status.textContent = msg;
-            document.querySelector('.container').prepend(status);
-            setTimeout(() => status.remove(), 3000);
-        }
-
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        // אתחול
-        window.onload = () => {
-            loadContacts();
-            loadEmails();
-        };
-    </script>
 </body>
 </html>
