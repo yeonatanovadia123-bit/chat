@@ -3,214 +3,128 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>E2EE Chat - הצפנה מלאה</title>
+    <title>Chat</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/appwrite@13.0.0"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jsencrypt/3.3.2/jsencrypt.min.js"></script>
-    
     <style>
-        body { background-color: #f0f2f5; font-family: sans-serif; }
-        .app-container { max-width: 800px; margin: 30px auto; background: #fff; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); padding: 20px; min-height: 80vh; }
-        .chat-box { height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 15px; margin-bottom: 15px; background: #fafafa; border-radius: 5px; }
-        .msg { padding: 8px 12px; margin-bottom: 10px; border-radius: 8px; max-width: 80%; display: block; word-wrap: break-word; }
-        .msg-in { background-color: #d1e7dd; margin-right: auto; }
-        .debug-text { font-size: 0.7em; color: #888; display: block; margin-top: 4px; }
+        body { background-color: #f0f2f5; font-family: sans-serif; padding: 20px; }
+        .container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        .msg { background: #d1e7dd; padding: 10px; margin: 5px 0; border-radius: 5px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <div class="app-container">
-        <h2 class="text-center mb-4">מערכת צ'אט מוצפנת (E2EE)</h2>
+    <h2 class="text-center">צ'אט מאובטח</h2>
+    
+    <div id="login-screen">
+        <input type="text" id="username" class="form-control mb-2" placeholder="שם משתמש (באנגלית)">
+        <button onclick="register()" class="btn btn-primary w-100">כנס</button>
+        <p id="status" class="text-muted mt-2"></p>
+    </div>
 
-        <div id="login-section">
-            <div class="alert alert-primary">
-                המערכת מייצרת מפתח פרטי בדפדפן שלך. השרת לא יכול לקרוא את ההודעות.
-            </div>
-            <input type="text" id="username" class="form-control mb-2" placeholder="בחר שם משתמש באנגלית (למשל: dan)">
-            <button onclick="registerUser()" class="btn btn-primary w-100">צור מפתחות וכנס</button>
-            <p id="loading" class="text-center mt-2 text-muted" style="display:none;">מייצר מפתחות הצפנה...</p>
-        </div>
-
-        <div id="chat-section" style="display:none;">
-            <div class="d-flex justify-content-between mb-2">
-                <strong id="welcome-user"></strong>
-                <button onclick="logout()" class="btn btn-sm btn-outline-danger">התנתק</button>
-            </div>
-
-            <div id="messages-area" class="chat-box"></div>
-
-            <div class="input-group">
-                <input type="text" id="recipient" class="form-control" placeholder="למי לשלוח?" style="max-width: 30%;">
-                <input type="text" id="msg-content" class="form-control" placeholder="תוכן ההודעה...">
-                <button onclick="sendMessage()" class="btn btn-success">שלח 🔒</button>
-            </div>
-            <small class="text-muted mt-2">הערה: הודעות ששלחת לא יוצגו כאן (כי הן מוצפנות למקבל), רק הודעות שנשלחו אליך.</small>
-        </div>
+    <div id="chat-screen" style="display:none;">
+        <h3>שלום <span id="my-name"></span></h3>
+        <div id="messages" style="height: 300px; overflow-y: scroll; border: 1px solid #ddd; margin-bottom: 10px; padding: 10px;"></div>
+        <input type="text" id="to-user" class="form-control mb-1" placeholder="למי לשלוח?">
+        <input type="text" id="msg-text" class="form-control mb-1" placeholder="הודעה...">
+        <button onclick="send()" class="btn btn-success w-100">שלח</button>
     </div>
 </div>
 
 <script>
-    // ==========================================
-    // הגדרות החיבור - מעודכן לפי התמונה ששלחת!
-    // ==========================================
-    const PROJECT_ID = '694abef500045ee01528';       
-    const DATABASE_ID = '694abf9300062560c636';     
+    // הגדרות החיבור שלך
+    const client = new Appwrite.Client()
+        .setEndpoint('https://cloud.appwrite.io/v1')
+        .setProject('694abef500045ee01528'); // הפרויקט שלך
+
+    const db = new Appwrite.Databases(client);
     
-    // מזהים לפי התמונה שלך:
-    const USERS_COL_ID = 'users'; 
-    const MSGS_COL_ID = 'msgs'; 
+    const DB_ID = '694abf9300062560c636'; // הדאטה בייס שלך
+    const USERS = 'users'; 
+    const MSGS = 'msgs';
 
-    // אתחול
-    const { Client, Databases, ID, Query } = Appwrite;
-    const client = new Client().setEndpoint('https://cloud.appwrite.io/v1').setProject(PROJECT_ID);
-    const databases = new Databases(client);
+    let me = localStorage.getItem('u');
+    let key = localStorage.getItem('k');
 
-    // משתנים למפתחות
-    let myUser = localStorage.getItem('chat_user');
-    let myPrivKey = localStorage.getItem('chat_priv');
+    if(me && key) showChat(me);
 
-    // כניסה אוטומטית אם המפתחות קיימים
-    if(myUser && myPrivKey) {
-        showChat(myUser);
-    }
-
-    // --- 1. הרשמה ויצירת מפתחות ---
-    async function registerUser() {
-        const username = document.getElementById('username').value.trim();
-        if(!username) return alert("חובה להכניס שם");
-
-        document.getElementById('loading').style.display = 'block';
-
-        try {
-            // בדיקה אם המשתמש כבר קיים בשרת
-            // הערה: אם זה המשתמש הראשון אי פעם, ייתכן שתהיה שגיאת הרשאה אם לא הגדרת Permissions ל-Any
-            // ננסה פשוט ליצור, ואם נכשל בגלל ID כפול נדע שהוא קיים
-        } catch(e) {}
-
-        // יצירת מפתחות RSA
-        const crypt = new JSEncrypt({ default_key_size: 2048 });
+    async function register() {
+        const name = document.getElementById('username').value;
+        document.getElementById('status').innerText = "יוצר מפתחות...";
         
+        // יצירת מפתח
+        const crypt = new JSEncrypt({default_key_size: 2048});
         setTimeout(async () => {
-            const privateKey = crypt.getPrivateKey();
-            const publicKey = crypt.getPublicKey();
+            const pub = crypt.getPublicKey();
+            const priv = crypt.getPrivateKey();
 
             try {
-                // בדיקה ידנית אם המשתמש תפוס לפני יצירה
-                const check = await databases.listDocuments(DATABASE_ID, USERS_COL_ID, [Query.equal('username', username)]);
-                if(check.total > 0) {
-                     alert("שם המשתמש תפוס! נסה שם אחר.");
-                     document.getElementById('loading').style.display = 'none';
-                     return;
-                }
-
-                // שמירת המפתח הציבורי בשרת
-                await databases.createDocument(DATABASE_ID, USERS_COL_ID, ID.unique(), {
-                    username: username,
-                    public_key: publicKey
+                // שמירה בשרת
+                await db.createDocument(DB_ID, USERS, Appwrite.ID.unique(), {
+                    username: name,
+                    public_key: pub
                 });
-
-                // שמירה מקומית
-                localStorage.setItem('chat_user', username);
-                localStorage.setItem('chat_priv', privateKey);
                 
-                showChat(username);
-            } catch (err) {
-                console.error(err);
-                alert("שגיאה: " + err.message + "\n(ודא שיצרת את השדות בטבלה והגדרת הרשאות Permissions ל-Any)");
+                localStorage.setItem('u', name);
+                localStorage.setItem('k', priv);
+                showChat(name);
+            } catch(e) {
+                alert("שגיאה או ששם המשתמש תפוס");
             }
-            document.getElementById('loading').style.display = 'none';
-        }, 200);
+        }, 500);
     }
 
     function showChat(name) {
-        myUser = name;
-        myPrivKey = localStorage.getItem('chat_priv');
-        document.getElementById('login-section').style.display = 'none';
-        document.getElementById('chat-section').style.display = 'block';
-        document.getElementById('welcome-user').innerText = "מחובר: " + name;
-        loadMessages();
-        setInterval(loadMessages, 3000); // רענון כל 3 שניות
+        me = name;
+        key = localStorage.getItem('k');
+        document.getElementById('login-screen').style.display = 'none';
+        document.getElementById('chat-screen').style.display = 'block';
+        document.getElementById('my-name').innerText = name;
+        setInterval(loadMsgs, 3000);
     }
 
-    // --- 2. שליחה ---
-    async function sendMessage() {
-        const recipient = document.getElementById('recipient').value.trim();
-        const text = document.getElementById('msg-content').value;
-        if(!recipient || !text) return alert("חסר נמען או תוכן");
+    async function send() {
+        const to = document.getElementById('to-user').value;
+        const txt = document.getElementById('msg-text').value;
 
-        try {
-            // מציאת המפתח הציבורי של הנמען
-            const res = await databases.listDocuments(DATABASE_ID, USERS_COL_ID, [Query.equal('username', recipient)]);
-            if(res.total === 0) return alert("המשתמש " + recipient + " לא נמצא");
-            
-            const receiverPublicKey = res.documents[0].public_key;
+        // 1. מביאים את המפתח של החבר
+        const u = await db.listDocuments(DB_ID, USERS, [Appwrite.Query.equal('username', to)]);
+        if(u.total === 0) return alert("משתמש לא נמצא");
 
-            // הצפנה
-            const encryptor = new JSEncrypt();
-            encryptor.setPublicKey(receiverPublicKey);
-            const encryptedData = encryptor.encrypt(text);
+        // 2. מצפינים
+        const encryptor = new JSEncrypt();
+        encryptor.setPublicKey(u.documents[0].public_key);
+        const encrypted = encryptor.encrypt(txt);
 
-            if(!encryptedData) return alert("שגיאת הצפנה (אולי טקסט ארוך מדי?)");
-
-            // שליחה לשרת
-            await databases.createDocument(DATABASE_ID, MSGS_COL_ID, ID.unique(), {
-                sender_name: myUser,
-                recipient_id: recipient,
-                content: encryptedData,
-                timestamp: new Date().toISOString()
-            });
-
-            document.getElementById('msg-content').value = '';
-            alert("נשלח בהצלחה (מוצפן)");
-
-        } catch(err) {
-            console.error(err);
-            alert("שגיאה בשליחה: " + err.message);
-        }
+        // 3. שולחים
+        await db.createDocument(DB_ID, MSGS, Appwrite.ID.unique(), {
+            sender_name: me,
+            recipient_id: to,
+            content: encrypted,
+            timestamp: new Date().toISOString()
+        });
+        alert("נשלח!");
     }
 
-    // --- 3. קבלה ופענוח ---
-    async function loadMessages() {
-        if(!myUser) return;
+    async function loadMsgs() {
+        const res = await db.listDocuments(DB_ID, MSGS, [
+            Appwrite.Query.equal('recipient_id', me),
+            Appwrite.Query.orderDesc('timestamp')
+        ]);
 
-        try {
-            // שליפת הודעות שמיועדות לי
-            const res = await databases.listDocuments(DATABASE_ID, MSGS_COL_ID, [
-                Query.equal('recipient_id', myUser),
-                Query.orderDesc('timestamp'),
-                Query.limit(20)
-            ]);
+        const box = document.getElementById('messages');
+        box.innerHTML = '';
+        const decryptor = new JSEncrypt();
+        decryptor.setPrivateKey(key);
 
-            const area = document.getElementById('messages-area');
-            area.innerHTML = '';
-
-            const decryptor = new JSEncrypt();
-            decryptor.setPrivateKey(myPrivKey);
-
-            res.documents.forEach(msg => {
-                let originalText = decryptor.decrypt(msg.content);
-                if(!originalText) originalText = "⛔ שגיאה בפענוח (מפתח פרטי לא תואם)";
-
-                area.innerHTML += `
-                    <div class="msg msg-in">
-                        <strong>מאת ${msg.sender_name}:</strong><br>
-                        ${originalText}
-                        <span class="debug-text">הוצפן כ: ${msg.content.substring(0, 10)}...</span>
-                    </div>
-                `;
-            });
-
-        } catch(err) {
-            console.error("Error loading", err);
-        }
-    }
-
-    function logout() {
-        localStorage.clear();
-        location.reload();
+        res.documents.forEach(m => {
+            let txt = decryptor.decrypt(m.content);
+            if(!txt) txt = "הודעה לא קריאה";
+            box.innerHTML += `<div class='msg'><b>${m.sender_name}:</b> ${txt}</div>`;
+        });
     }
 </script>
-
 </body>
 </html>
